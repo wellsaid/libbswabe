@@ -6,3 +6,9 @@ through the source of the cpabe package found at the URL below.
 
 Email John Bethencourt <bethenco@cs.berkeley.edu> with any questions,
 comments, or bug reports.
+
+
+------------------ B.Girgenti: ESP32 Port
+Forked to be ported to ESP32 by:
+    - removing any usage of GLib
+    - substitute openssl/{aes.h,sha1.h} functions with mbedtls/{aes.h,sha1.h} ones

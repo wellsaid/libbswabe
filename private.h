@@ -1,5 +1,5 @@
 /*
-	Include glib.h, pbc.h, and bswabe.h before including this file.
+	Include pbc.h, mbedtls/aes.h and bswabe.h before including this file.
 */
 
 struct bswabe_pub_s
@@ -35,7 +35,8 @@ bswabe_prv_comp_t;
 struct bswabe_prv_s
 {
 	element_t d;   /* G_2 */
-	GArray* comps; /* bswabe_prv_comp_t's */
+	bswabe_prv_comp_t* comps; /* bswabe_prv_comp_t's */
+	size_t comps_len;
 };
 
 typedef struct
@@ -46,14 +47,18 @@ typedef struct
 }
 bswabe_polynomial_t;
 
-typedef struct
+
+typedef struct bswabe_policy_t bswabe_policy_t;
+
+struct bswabe_policy_t
 {
 	/* serialized */
 	int k;            /* one if leaf, otherwise threshold */
 	char* attr;       /* attribute string if leaf, otherwise null */
 	element_t c;      /* G_1, only for leaves */
 	element_t cp;     /* G_1, only for leaves */
-	GPtrArray* children; /* pointers to bswabe_policy_t's, len == 0 for leaves */
+	bswabe_policy_t* children; /* pointers to bswabe_policy_t's, len == 0 for leaves */
+	size_t children_len;
 
 	/* only used during encryption */
 	bswabe_polynomial_t* q;
@@ -62,9 +67,9 @@ typedef struct
 	int satisfiable;
 	int min_leaves;
 	int attri;
-	GArray* satl;
-}
-bswabe_policy_t;
+	int* satl;
+	size_t satl_len;
+};
 
 struct bswabe_cph_s
 {
@@ -72,3 +77,26 @@ struct bswabe_cph_s
 	element_t c;  /* G_1 */
 	bswabe_policy_t* p;
 };
+
+/*
+  Exactly what it seems.
+*/
+size_t bswabe_cph_serialize( char** b, bswabe_cph_t* cph );
+
+/*
+  Also exactly what it seems. If free is true, the GByteArray passed
+  in will be free'd after it is read.
+*/
+void bswabe_cph_unserialize( bswabe_cph_t** cph, bswabe_pub_t* pub, char* b, size_t b_len );
+
+/*
+ * AES CBC Encryption/Decryption functions
+*/
+size_t bswabe_aes_128_cbc_encrypt( char** ct, char* pt, size_t pt_len, element_t k );
+size_t bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k );
+void bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, int enc, unsigned char* iv );
+
+/*
+  Again, exactly what it seems.
+*/
+void bswabe_policy_free( bswabe_policy_t* p );

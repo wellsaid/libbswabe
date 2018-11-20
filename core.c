@@ -5,8 +5,8 @@
 #endif
 #include <assert.h>
 
-#include <openssl/sha.h>
-#include <glib.h>
+#include <mbedtls/sha1.h>
+#include <mbedtls/aes.h>
 #include <pbc.h>
 
 #include "bswabe.h"
@@ -55,14 +55,20 @@ element_from_string( element_t h, char* s )
 {
 	unsigned char* r;
 
-	r = malloc(SHA_DIGEST_LENGTH);
-	SHA1((unsigned char*) s, strlen(s), r);
-	element_from_hash(h, r, SHA_DIGEST_LENGTH);
+	mbedtls_sha1_context ctx;
+	mbedtls_sha1_init(&ctx);
 
+	mbedtls_sha1_starts_ret(&ctx);
+	mbedtls_sha1_update_ret(&ctx, (unsigned char*) s, strlen(s));
+	r = malloc(20);
+	mbedtls_sha1_finish_ret(&ctx, r);
+	element_from_hash(h, r, 20);
+
+	mbedtls_sha1_free(&ctx);
 	free(r);
 }
 
-void
+int
 bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 {
 	element_t alpha;
@@ -73,7 +79,9 @@ bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 	*msk = malloc(sizeof(bswabe_msk_t));
 
 	(*pub)->pairing_desc = strdup(TYPE_A_PARAMS);
-	pairing_init_set_buf((*pub)->p, (*pub)->pairing_desc, strlen((*pub)->pairing_desc));
+	if( pairing_init_set_buf((*pub)->p, (*pub)->pairing_desc, strlen((*pub)->pairing_desc)) ){
+		return 0;
+	}
 
 	element_init_G1((*pub)->g,           (*pub)->p);
 	element_init_G1((*pub)->h,           (*pub)->p);
@@ -92,45 +100,46 @@ bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 
 	element_pow_zn((*msk)->g_alpha, (*pub)->gp, alpha);
 	element_pow_zn((*pub)->h, (*pub)->g, (*msk)->beta);
-  pairing_apply((*pub)->g_hat_alpha, (*pub)->g, (*msk)->g_alpha, (*pub)->p);
+       pairing_apply((*pub)->g_hat_alpha, (*pub)->g, (*msk)->g_alpha, (*pub)->p);
+
+       return 1;
 }
 
-bswabe_prv_t* bswabe_keygen( bswabe_pub_t* pub,
-														 bswabe_msk_t* msk,
-														 char** attributes )
+void bswabe_keygen( bswabe_prv_t** prv, bswabe_pub_t* pub, bswabe_msk_t* msk, char** attributes, size_t num_attributes)
 {
-	bswabe_prv_t* prv;
+	size_t i;
+	
 	element_t g_r;
 	element_t r;
 	element_t beta_inv;
 
 	/* initialize */
 
-	prv = malloc(sizeof(bswabe_prv_t));
+	(*prv) = malloc(sizeof(bswabe_prv_t));
 
-	element_init_G2(prv->d, pub->p);
+	element_init_G2((*prv)->d, pub->p);
 	element_init_G2(g_r, pub->p);
 	element_init_Zr(r, pub->p);
 	element_init_Zr(beta_inv, pub->p);
 
-	prv->comps = g_array_new(0, 1, sizeof(bswabe_prv_comp_t));
-
+	(*prv)->comps = malloc(num_attributes*sizeof(bswabe_prv_comp_t));
+	(*prv)->comps_len = 0;
+	
 	/* compute */
-
  	element_random(r);
 	element_pow_zn(g_r, pub->gp, r);
 
-	element_mul(prv->d, msk->g_alpha, g_r);
+	element_mul((*prv)->d, msk->g_alpha, g_r);
 	element_invert(beta_inv, msk->beta);
-	element_pow_zn(prv->d, prv->d, beta_inv);
+	element_pow_zn((*prv)->d, (*prv)->d, beta_inv);
 
-	while( *attributes )
+	for( i = 0; i < num_attributes; i++ )
 	{
 		bswabe_prv_comp_t c;
 		element_t h_rp;
 		element_t rp;
 
-		c.attr = *(attributes++);
+		c.attr = strdup(attributes[i]);
 
 		element_init_G2(c.d,  pub->p);
 		element_init_G1(c.dp, pub->p);
@@ -148,62 +157,74 @@ bswabe_prv_t* bswabe_keygen( bswabe_pub_t* pub,
 		element_clear(h_rp);
 		element_clear(rp);
 
-		g_array_append_val(prv->comps, c);
+		memcpy(&(*prv)->comps[i], &c, sizeof(bswabe_prv_comp_t));
+		(*prv)->comps_len++;
 	}
-
-	return prv;
 }
 
-bswabe_policy_t*
-base_node( int k, char* s )
+void
+base_node( bswabe_policy_t** p, int k, char* s )
 {
-	bswabe_policy_t* p;
+	(*p) = malloc(sizeof(bswabe_policy_t));
+	(*p)->k = k;
+	(*p)->attr = s? strdup(s) : NULL;
+	(*p)->children = NULL;
+	(*p)->children_len = 0;
+	(*p)->q = 0;
+}
 
-	p = (bswabe_policy_t*) malloc(sizeof(bswabe_policy_t));
-	p->k = k;
-	p->attr = s ? strdup(s) : 0;
-	p->children = g_ptr_array_new();
-	p->q = 0;
+/* Helper method:
+ *     Counts the number of tokens in the string
+ */
+size_t
+strtok_count( char* s,  const char* delim )
+{
+	int count = 0;
+	char *ptr = s;
+	while((ptr = strpbrk(ptr, delim)) != NULL)
+	{
+		count++;
+		ptr++;
+	}
 
-	return p;
+	return count;
 }
 
 /*
 	TODO convert this to use a GScanner and handle quotes and / or
 	escapes to allow attributes with whitespace or = signs in them
 */
-
-bswabe_policy_t*
-parse_policy_postfix( char* s )
+int
+parse_policy_postfix( bswabe_policy_t** root, char* s )
 {
-	char** toks;
-	char** cur_toks;
+	int i;
+	
 	char*  tok;
-	GPtrArray* stack; /* pointers to bswabe_policy_t's */
-	bswabe_policy_t* root;
+	bswabe_policy_t* stack; /* pointers to bswabe_policy_t's */
+	size_t stack_len = 0;
+	bswabe_policy_t* top;
+	
+	stack    = malloc((strtok_count(s, " ")+1)*sizeof(bswabe_policy_t));
+	top = stack;
 
-	toks     = g_strsplit(s, " ", 0);
-	cur_toks = toks;
-	stack    = g_ptr_array_new();
+	char* s_tmp = strdup(s);
 
-	while( *cur_toks )
+	tok = strtok(s_tmp, " ");
+	while( tok )
 	{
-		int i, k, n;
-
-		tok = *(cur_toks++);
-
-		if( !*tok )
-			continue;
+		int k, n;
+		bswabe_policy_t* node;
 
 		if( sscanf(tok, "%dof%d", &k, &n) != 2 )
+		{
 			/* push leaf token */
-			g_ptr_array_add(stack, base_node(1, tok));
+			base_node(&node, 1, tok);
+			memcpy(top++, node, sizeof(bswabe_policy_t));
+			stack_len++;
+		}
 		else
 		{
-			bswabe_policy_t* node;
-
 			/* parse "kofn" operator */
-
 			if( k < 1 )
 			{
 				raise_error("error parsing \"%s\": trivially satisfied operator \"%s\"\n", s, tok);
@@ -219,61 +240,68 @@ parse_policy_postfix( char* s )
 				raise_error("error parsing \"%s\": identity operator \"%s\"\n", s, tok);
 				return 0;
 			}
-			else if( n > stack->len )
+			else if( n > stack_len )
 			{
 				raise_error("error parsing \"%s\": stack underflow at \"%s\"\n", s, tok);
 				return 0;
 			}
 			
 			/* pop n things and fill in children */
-			node = base_node(k, 0);
-			g_ptr_array_set_size(node->children, n);
+			base_node(&node, k, 0);
+			node->children = malloc(n*sizeof(bswabe_policy_t));
+			node->children_len = 0;
 			for( i = n - 1; i >= 0; i-- )
-				node->children->pdata[i] = g_ptr_array_remove_index(stack, stack->len - 1);
+			{
+				memcpy(&node->children[i], --top, sizeof(bswabe_policy_t));
+				stack_len--;
+				node->children_len++;
+			}
 			
 			/* push result */
-			g_ptr_array_add(stack, node);
+			memcpy(top++, node, sizeof(bswabe_policy_t));
+			stack_len++;
 		}
+
+		free(node);
+		tok = strtok(NULL, " ");
 	}
 
-	if( stack->len > 1 )
+	if( stack_len > 1 )
 	{
 		raise_error("error parsing \"%s\": extra tokens left on stack\n", s);
 		return 0;
 	}
-	else if( stack->len < 1 )
+	else if( stack_len < 1 )
 	{
 		raise_error("error parsing \"%s\": empty policy\n", s);
 		return 0;
 	}
 
-	root = g_ptr_array_index(stack, 0);
+	*root = malloc(sizeof(bswabe_policy_t));
+	memcpy(*root, --top, sizeof(bswabe_policy_t));
 
- 	g_strfreev(toks);
- 	g_ptr_array_free(stack, 0);
-
-	return root;
+	free(stack);
+	free(s_tmp);
+	
+	return 1;
 }
 
-bswabe_polynomial_t*
-rand_poly( int deg, element_t zero_val )
+void
+rand_poly( bswabe_polynomial_t** q, int deg, element_t zero_val )
 {
 	int i;
-	bswabe_polynomial_t* q;
 
-	q = (bswabe_polynomial_t*) malloc(sizeof(bswabe_polynomial_t));
-	q->deg = deg;
-	q->coef = (element_t*) malloc(sizeof(element_t) * (deg + 1));
+	(*q) = malloc(sizeof(bswabe_polynomial_t));
+	(*q)->deg = deg;
+	(*q)->coef = malloc((deg + 1)*sizeof(element_t));
 
-	for( i = 0; i < q->deg + 1; i++ )
-		element_init_same_as(q->coef[i], zero_val);
+	for( i = 0; i < (*q)->deg + 1; i++ )
+		element_init_same_as((*q)->coef[i], zero_val);
 
-	element_set(q->coef[0], zero_val);
+	element_set((*q)->coef[0], zero_val);
 
-	for( i = 1; i < q->deg + 1; i++ )
- 		element_random(q->coef[i]);
-
-	return q;
+	for( i = 1; i < (*q)->deg + 1; i++ )
+ 		element_random((*q)->coef[i]);
 }
 
 void
@@ -314,9 +342,9 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
 	element_init_Zr(t, pub->p);
 	element_init_G2(h, pub->p);
 
-	p->q = rand_poly(p->k - 1, e);
+	rand_poly(&p->q, p->k - 1, e);
 
-	if( p->children->len == 0 )
+	if( p->children == NULL )
 	{
 		element_init_G1(p->c,  pub->p);
 		element_init_G2(p->cp, pub->p);
@@ -326,11 +354,11 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
 		element_pow_zn(p->cp, h,      p->q->coef[0]);
 	}
 	else
-		for( i = 0; i < p->children->len; i++ )
+		for( i = 0; i < p->children_len; i++ )
 		{
 			element_set_si(r, i + 1);
 			eval_poly(t, p->q, r);
-			fill_policy(g_ptr_array_index(p->children, i), pub, t);
+			fill_policy(&p->children[i], pub, t);
 		}
 
 	element_clear(r);
@@ -338,34 +366,78 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
 	element_clear(h);
 }
 
-bswabe_cph_t*
-bswabe_enc( bswabe_pub_t* pub, element_t m, char* policy )
+size_t
+bswabe_enc( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy )
 {
+	int i;
+	uint8_t byte;
+	
 	bswabe_cph_t* cph;
  	element_t s;
+	element_t m_e;
 
 	/* initialize */
-
 	cph = malloc(sizeof(bswabe_cph_t));
 
 	element_init_Zr(s, pub->p);
-	element_init_GT(m, pub->p);
+	element_init_GT(m_e, pub->p);
 	element_init_GT(cph->cs, pub->p);
 	element_init_G1(cph->c,  pub->p);
-	cph->p = parse_policy_postfix(policy);
+	parse_policy_postfix(&cph->p, policy);
 
 	/* compute */
-
- 	element_random(m);
+ 	element_random(m_e);
  	element_random(s);
 	element_pow_zn(cph->cs, pub->g_hat_alpha, s);
-	element_mul(cph->cs, cph->cs, m);
+	element_mul(cph->cs, cph->cs, m_e);
 
 	element_pow_zn(cph->c, pub->h, s);
 
 	fill_policy(cph->p, pub, s);
 
-	return cph;
+	/* rest of the encryption from http://hms.isi.jhu.edu/acsc/cpabe/cpabe-0.11.tar.gz */
+	char* cph_buf = NULL;
+	size_t cph_buf_len = bswabe_cph_serialize(&cph_buf, cph);
+	bswabe_cph_free(cph);
+
+	char* aes_buf = NULL;
+	size_t aes_buf_len = bswabe_aes_128_cbc_encrypt(&aes_buf, m, m_len, m_e);
+	element_clear(m_e);
+	
+	size_t ct_len = 12 + aes_buf_len + cph_buf_len;
+	*ct = malloc(ct_len);
+
+	size_t a = 0;
+
+	/* write plaintext len as 32-bit big endian int */
+	for( i = 3; i >= 0; i-- )
+	{
+		byte = (m_len & 0xff<<(i*8))>>(i*8);
+		(*ct)[a] = byte;
+		a++;
+	}
+
+	/* write aes_buf */
+	for( i = 3; i >= 0; i-- ){
+		byte = (aes_buf_len & 0xff<<(i*8))>>(i*8);
+		(*ct)[a] = byte;
+		a++;
+	}
+	memcpy(*ct + a, aes_buf, aes_buf_len);
+	a += aes_buf_len;
+
+	/* write cph_buf */
+	for( i = 3; i >= 0; i-- ){
+		byte = (cph_buf_len & 0xff<<(i*8))>>(i*8);
+		(*ct)[a] = byte;
+		a++;
+	}
+	memcpy(*ct + a, cph_buf, cph_buf_len);
+
+	free(cph_buf);
+	free(aes_buf);
+	
+	return ct_len;
 }
 
 void
@@ -374,11 +446,10 @@ check_sat( bswabe_policy_t* p, bswabe_prv_t* prv )
 	int i, l;
 
 	p->satisfiable = 0;
-	if( p->children->len == 0 )
+	if( p->children_len == 0 )
 	{
-		for( i = 0; i < prv->comps->len; i++ )
-			if( !strcmp(g_array_index(prv->comps, bswabe_prv_comp_t, i).attr,
-									p->attr) )
+		for( i = 0; i < prv->comps_len; i++ )
+			if( !strcmp(prv->comps[i].attr, p->attr) )
 			{
 				p->satisfiable = 1;
 				p->attri = i;
@@ -387,12 +458,12 @@ check_sat( bswabe_policy_t* p, bswabe_prv_t* prv )
 	}
 	else
 	{
-		for( i = 0; i < p->children->len; i++ )
-			check_sat(g_ptr_array_index(p->children, i), prv);
+		for( i = 0; i < p->children_len; i++ )
+			check_sat(&p->children[i], prv);
 
 		l = 0;
-		for( i = 0; i < p->children->len; i++ )
-			if( ((bswabe_policy_t*) g_ptr_array_index(p->children, i))->satisfiable )
+		for( i = 0; i < p->children_len; i++ )
+			if( p->children[i].satisfiable )
 				l++;
 
 		if( l >= p->k )
@@ -403,23 +474,31 @@ check_sat( bswabe_policy_t* p, bswabe_prv_t* prv )
 void
 pick_sat_naive( bswabe_policy_t* p, bswabe_prv_t* prv )
 {
-	int i, k, l;
+	int i, k, l = 0;
 
 	assert(p->satisfiable == 1);
 
-	if( p->children->len == 0 )
+	if( p->children_len == 0 )
 		return;
 
-	p->satl = g_array_new(0, 0, sizeof(int));
-
-	l = 0;
-	for( i = 0; i < p->children->len && l < p->k; i++ )
-		if( ((bswabe_policy_t*) g_ptr_array_index(p->children, i))->satisfiable )
+	p->satl_len = 0;
+	for( i = 0; i < p->children_len && l < p->k; i++ )
+		if( p->children[i].satisfiable )
 		{
-			pick_sat_naive(g_ptr_array_index(p->children, i), prv);
+			l++;
+			p->satl++;
+		}
+	
+	l = 0;
+	p->satl = malloc(p->satl_len*sizeof(int));
+	p->satl_len = 0;
+	for( i = 0; i < p->children_len && l < p->k; i++ )
+		if( p->children[i].satisfiable )
+		{
+			pick_sat_naive(&p->children[i], prv);
 			l++;
 			k = i + 1;
-			g_array_append_val(p->satl, k);
+			p->satl[p->satl_len++] = k;
 		}
 }
 
@@ -430,8 +509,8 @@ cmp_int( const void* a, const void* b )
 {
 	int k, l;
 	
-	k = ((bswabe_policy_t*) g_ptr_array_index(cur_comp_pol->children, *((int*)a)))->min_leaves;
-	l = ((bswabe_policy_t*) g_ptr_array_index(cur_comp_pol->children, *((int*)b)))->min_leaves;
+	k = cur_comp_pol->children[*((int*)a)].min_leaves;
+	l = cur_comp_pol->children[*((int*)b)].min_leaves;
 
 	return
 		k <  l ? -1 :
@@ -441,44 +520,56 @@ cmp_int( const void* a, const void* b )
 void
 pick_sat_min_leaves( bswabe_policy_t* p, bswabe_prv_t* prv )
 {
-	int i, k, l;
+	int i, k, l = 0;
 	int* c;
 
 	assert(p->satisfiable == 1);
 
-	if( p->children->len == 0 )
+	if( p->children_len == 0 )
 		p->min_leaves = 1;
 	else
 	{
-		for( i = 0; i < p->children->len; i++ )
-			if( ((bswabe_policy_t*) g_ptr_array_index(p->children, i))->satisfiable )
-				pick_sat_min_leaves(g_ptr_array_index(p->children, i), prv);
+		for( i = 0; i < p->children_len; i++ )
+			if( p->children[i].satisfiable )
+				pick_sat_min_leaves(&p->children[i], prv);
 
-		c = alloca(sizeof(int) * p->children->len);
-		for( i = 0; i < p->children->len; i++ )
+		c = malloc(sizeof(int)*p->children_len);
+		for( i = 0; i < p->children_len; i++ )
 			c[i] = i;
 
 		cur_comp_pol = p;
-		qsort(c, p->children->len, sizeof(int), cmp_int);
+		qsort(c, p->children_len, sizeof(int), cmp_int);
 
-		p->satl = g_array_new(0, 0, sizeof(int));
+		/* count how many satl we need */
+		p->satl_len = 0;
+		for( i = 0; i < p->children_len && l < p->k; i++ )
+			if( p->children[c[i]].satisfiable )
+			{
+				l++;
+				p->satl_len ++;
+			}
+		
+		p->satl = malloc(p->satl_len*sizeof(int));
+		p->satl_len = 0;
 		p->min_leaves = 0;
 		l = 0;
 
-		for( i = 0; i < p->children->len && l < p->k; i++ )
-			if( ((bswabe_policy_t*) g_ptr_array_index(p->children, c[i]))->satisfiable )
+		for( i = 0; i < p->children_len && l < p->k; i++ )
+			if( p->children[c[i]].satisfiable )
 			{
 				l++;
-				p->min_leaves += ((bswabe_policy_t*) g_ptr_array_index(p->children, c[i]))->min_leaves;
+				p->min_leaves += p->children[c[i]].min_leaves;
 				k = c[i] + 1;
-				g_array_append_val(p->satl, k);
+				p->satl[p->satl_len++] = k;
 			}
 		assert(l == p->k);
+
+		free(c);
 	}
 }
 
 void
-lagrange_coef( element_t r, GArray* s, int i )
+lagrange_coef( element_t r, int* s, size_t s_len, int i )
 {
 	int j, k;
 	element_t t;
@@ -486,9 +577,9 @@ lagrange_coef( element_t r, GArray* s, int i )
 	element_init_same_as(t, r);
 
 	element_set1(r);
-	for( k = 0; k < s->len; k++ )
+	for( k = 0; k < s_len; k++ )
 	{
-		j = g_array_index(s, int, k);
+		j = s[k];
 		if( j == i )
 			continue;
 		element_set_si(t, - j);
@@ -507,7 +598,7 @@ dec_leaf_naive( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t
 	bswabe_prv_comp_t* c;
 	element_t s;
 
-	c = &(g_array_index(prv->comps, bswabe_prv_comp_t, p->attri));
+	c = &prv->comps[p->attri];
 
 	element_init_GT(s, pub->p);
 
@@ -532,12 +623,10 @@ dec_internal_naive( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_p
 	element_init_Zr(t, pub->p);
 
 	element_set1(r);
-	for( i = 0; i < p->satl->len; i++ )
+	for( i = 0; i < p->satl_len; i++ )
 	{
-		dec_node_naive
-			(s, g_ptr_array_index
-			 (p->children, g_array_index(p->satl, int, i) - 1), prv, pub);
- 		lagrange_coef(t, p->satl, g_array_index(p->satl, int, i));
+		dec_node_naive(s, &p->children[p->satl[i] - 1], prv, pub);
+ 		lagrange_coef(t, p->satl, p->satl_len, p->satl[i]);
 		element_pow_zn(s, s, t); /* num_exps++; */
 		element_mul(r, r, s); /* num_muls++; */
 	}
@@ -550,7 +639,7 @@ void
 dec_node_naive( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* pub )
 {
 	assert(p->satisfiable);
-	if( p->children->len == 0 )
+	if( p->children_len == 0 )
 		dec_leaf_naive(r, p, prv, pub);
 	else
 		dec_internal_naive(r, p, prv, pub);
@@ -568,7 +657,7 @@ dec_leaf_merge( element_t exp, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub
 	bswabe_prv_comp_t* c;
 	element_t s;
 
-	c = &(g_array_index(prv->comps, bswabe_prv_comp_t, p->attri));
+	c = &prv->comps[p->attri];
 
 	if( !c->used )
 	{
@@ -602,12 +691,11 @@ dec_internal_merge( element_t exp, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe
 	element_init_Zr(t, pub->p);
 	element_init_Zr(expnew, pub->p);
 
-	for( i = 0; i < p->satl->len; i++ )
+	for( i = 0; i < p->satl_len; i++ )
 	{
- 		lagrange_coef(t, p->satl, g_array_index(p->satl, int, i));
+ 		lagrange_coef(t, p->satl, p->satl_len, p->satl[i]);
 		element_mul(expnew, exp, t); /* num_muls++; */
-		dec_node_merge(expnew, g_ptr_array_index
-									 (p->children, g_array_index(p->satl, int, i) - 1), prv, pub);
+		dec_node_merge(expnew, &p->children[p->satl[i]- 1], prv, pub);
 	}
 
 	element_clear(t);
@@ -618,7 +706,7 @@ void
 dec_node_merge( element_t exp, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* pub )
 {
 	assert(p->satisfiable);
-	if( p->children->len == 0 )
+	if( p->children_len == 0 )
 		dec_leaf_merge(exp, p, prv, pub);
 	else
 		dec_internal_merge(exp, p, prv, pub);
@@ -632,8 +720,8 @@ dec_merge( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* pub
 	element_t s;
 
 	/* first mark all attributes as unused */
-	for( i = 0; i < prv->comps->len; i++ )
-		g_array_index(prv->comps, bswabe_prv_comp_t, i).used = 0;
+	for( i = 0; i < prv->comps_len; i++ )
+		prv->comps[i].used = 0;
 
 	/* now fill in the z's and zp's */
 	element_init_Zr(one, pub->p);
@@ -644,10 +732,10 @@ dec_merge( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* pub
 	/* now do all the pairings and multiply everything together */
 	element_set1(r);
 	element_init_GT(s, pub->p);
-	for( i = 0; i < prv->comps->len; i++ )
-		if( g_array_index(prv->comps, bswabe_prv_comp_t, i).used )
+	for( i = 0; i < prv->comps_len; i++ )
+		if( prv->comps[i].used )
 		{
-			bswabe_prv_comp_t* c = &(g_array_index(prv->comps, bswabe_prv_comp_t, i));
+			bswabe_prv_comp_t* c = &prv->comps[i];
 
 			pairing_apply(s, c->z, c->d, pub->p); /* num_pairings++; */
 			element_mul(r, r, s); /* num_muls++; */
@@ -667,7 +755,7 @@ dec_leaf_flatten( element_t r, element_t exp,
 	element_t s;
 	element_t t;
 
-	c = &(g_array_index(prv->comps, bswabe_prv_comp_t, p->attri));
+	c = &prv->comps[p->attri];
 
 	element_init_GT(s, pub->p);
 	element_init_GT(t, pub->p);
@@ -698,12 +786,11 @@ dec_internal_flatten( element_t r, element_t exp,
 	element_init_Zr(t, pub->p);
 	element_init_Zr(expnew, pub->p);
 
-	for( i = 0; i < p->satl->len; i++ )
+	for( i = 0; i < p->satl_len; i++ )
 	{
- 		lagrange_coef(t, p->satl, g_array_index(p->satl, int, i));
+ 		lagrange_coef(t, p->satl, p->satl_len, p->satl[i]);
 		element_mul(expnew, exp, t); /* num_muls++; */
-		dec_node_flatten(r, expnew, g_ptr_array_index
-										 (p->children, g_array_index(p->satl, int, i) - 1), prv, pub);
+		dec_node_flatten(r, expnew, &p->children[p->satl[i] - 1], prv, pub);
 	}
 
 	element_clear(t);
@@ -715,7 +802,7 @@ dec_node_flatten( element_t r, element_t exp,
 									bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* pub )
 {
 	assert(p->satisfiable);
-	if( p->children->len == 0 )
+	if( p->children_len == 0 )
 		dec_leaf_flatten(r, exp, p, prv, pub);
 	else
 		dec_internal_flatten(r, exp, p, prv, pub);
@@ -736,18 +823,54 @@ dec_flatten( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* p
 	element_clear(one);
 }
 
-int
-bswabe_dec( bswabe_pub_t* pub, bswabe_prv_t* prv, bswabe_cph_t* cph, element_t m )
+size_t
+bswabe_dec( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len)
 {
-	element_t t;
+	int i;
+	
+	/* operations before decryption from: http://hms.isi.jhu.edu/acsc/cpabe/cpabe-0.11.tar.gz  */
+	bswabe_cph_t* cph;
+	size_t a = 0;
+	
+	/* read plaintext len as 32-bit big endian int */
+    	size_t m_len = 0;
+	for( i = 3; i >= 0; i-- )
+	{
+		m_len |= c[a]<<(i*8);
+		a++;
+	}
 
-	element_init_GT(m, pub->p);
+	/* read aes buf */
+	size_t aes_buf_len = 0;
+	for( i = 3; i >= 0; i-- )
+	{
+		aes_buf_len |= c[a]<<(i*8);
+		a++;
+	}
+	char *aes_buf = malloc(aes_buf_len);
+	memcpy(aes_buf, c + a, aes_buf_len);
+	a += aes_buf_len;
+    
+	/* read cph buf */
+	size_t cph_buf_len = 0;
+	for( i = 3; i >= 0; i-- )
+	{
+		cph_buf_len |= c[a]<<(i*8);
+		a++;
+	}
+	char* cph_buf = malloc(cph_buf_len);
+	memcpy(cph_buf, c + a, cph_buf_len);	
+
+	element_t t;
+	element_t m_e;
+	element_init_GT(m_e, pub->p);
 	element_init_GT(t, pub->p);
+
+	bswabe_cph_unserialize(&cph, pub, cph_buf, cph_buf_len);
 
 	check_sat(cph->p, prv);
 	if( !cph->p->satisfiable )
 	{
-		raise_error("cannot decrypt, attributes in key do not satisfy policy\n");
 		return 0;
 	}
 
@@ -763,11 +886,16 @@ bswabe_dec( bswabe_pub_t* pub, bswabe_prv_t* prv, bswabe_cph_t* cph, element_t m
 /* 	else */
 /* 		dec_merge(t, cph->p, prv, pub); */
 
-	element_mul(m, cph->cs, t); /* num_muls++; */
+	element_mul(m_e, cph->cs, t); /* num_muls++; */
 
 	pairing_apply(t, cph->c, prv->d, pub->p); /* num_pairings++; */
 	element_invert(t, t);
-	element_mul(m, m, t); /* num_muls++; */
+	element_mul(m_e, m_e, t); /* num_muls++; */
 
-	return 1;
+	m_len = bswabe_aes_128_cbc_decrypt(m, aes_buf, aes_buf_len, m_e);
+
+	free(aes_buf);
+	free(cph_buf);
+
+	return m_len;
 }

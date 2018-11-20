@@ -36,16 +36,16 @@ typedef struct bswabe_cph_s bswabe_cph_t;
   later freed by calling bswabe_pub_free(*pub) and
   bswabe_msk_free(*msk).
 */
-void bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk );
+int bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk );
 
 /*
   Generate a private key with the given set of attributes. The final
   argument should be a null terminated array of pointers to strings,
   one for each attribute.
 */
-bswabe_prv_t* bswabe_keygen( bswabe_pub_t* pub,
-                             bswabe_msk_t* msk,
-                             char** attributes );
+void bswabe_keygen( bswabe_prv_t** prv,  bswabe_pub_t* pub,
+		    bswabe_msk_t* msk,
+		    char** attributes, size_t num_attributes );
 
 /*
   Pick a random group element and encrypt it under the specified
@@ -72,7 +72,7 @@ bswabe_prv_t* bswabe_keygen( bswabe_pub_t* pub,
   Returns null if an error occured, in which case a description can be
   retrieved by calling bswabe_error().
 */
-bswabe_cph_t* bswabe_enc( bswabe_pub_t* pub, element_t m, char* policy );
+size_t bswabe_enc( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy );
 
 /*
   Decrypt the specified ciphertext using the given private key,
@@ -82,25 +82,7 @@ bswabe_cph_t* bswabe_enc( bswabe_pub_t* pub, element_t m, char* policy );
   Returns true if decryption succeeded, false if this key does not
   satisfy the policy of the ciphertext (in which case m is unaltered).
 */
-int bswabe_dec( bswabe_pub_t* pub, bswabe_prv_t* prv,
-                bswabe_cph_t* cph, element_t m );
-
-/*
-  Exactly what it seems.
-*/
-GByteArray* bswabe_pub_serialize( bswabe_pub_t* pub );
-GByteArray* bswabe_msk_serialize( bswabe_msk_t* msk );
-GByteArray* bswabe_prv_serialize( bswabe_prv_t* prv );
-GByteArray* bswabe_cph_serialize( bswabe_cph_t* cph );
-
-/*
-  Also exactly what it seems. If free is true, the GByteArray passed
-  in will be free'd after it is read.
-*/
-bswabe_pub_t* bswabe_pub_unserialize( GByteArray* b, int free );
-bswabe_msk_t* bswabe_msk_unserialize( bswabe_pub_t* pub, GByteArray* b, int free );
-bswabe_prv_t* bswabe_prv_unserialize( bswabe_pub_t* pub, GByteArray* b, int free );
-bswabe_cph_t* bswabe_cph_unserialize( bswabe_pub_t* pub, GByteArray* b, int free );
+size_t bswabe_dec( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len);
 
 /*
   Again, exactly what it seems.
@@ -116,7 +98,7 @@ void bswabe_cph_free( bswabe_cph_t* cph );
   need to be free'd.
 */
 char* bswabe_error();
-
+	
 #if defined (__cplusplus)
 } // extern "C"
 #endif
