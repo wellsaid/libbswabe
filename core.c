@@ -367,34 +367,14 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
 }
 
 size_t
-bswabe_enc( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy )
+bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy )
 {
 	int i;
 	uint8_t byte;
 	
-	bswabe_cph_t* cph;
- 	element_t s;
 	element_t m_e;
-
-	/* initialize */
-	cph = malloc(sizeof(bswabe_cph_t));
-
-	element_init_Zr(s, pub->p);
-	element_init_GT(m_e, pub->p);
-	element_init_GT(cph->cs, pub->p);
-	element_init_G1(cph->c,  pub->p);
-	parse_policy_postfix(&cph->p, policy);
-
-	/* compute */
- 	element_random(m_e);
- 	element_random(s);
-	element_pow_zn(cph->cs, pub->g_hat_alpha, s);
-	element_mul(cph->cs, cph->cs, m_e);
-
-	element_pow_zn(cph->c, pub->h, s);
-
-	fill_policy(cph->p, pub, s);
-
+	bswabe_cph_t* cph = bswabe_enc(pub, m_e, policy);
+	
 	/* rest of the encryption from http://hms.isi.jhu.edu/acsc/cpabe/cpabe-0.11.tar.gz */
 	char* cph_buf = NULL;
 	size_t cph_buf_len = bswabe_cph_serialize(&cph_buf, cph);
@@ -438,6 +418,34 @@ bswabe_enc( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy )
 	free(aes_buf);
 	
 	return ct_len;
+}
+	
+bswabe_cph_t*
+bswabe_enc( bswabe_pub_t* pub, element_t m_e, char* policy )
+{
+	bswabe_cph_t* cph;
+ 	element_t s;
+
+	/* initialize */
+	cph = malloc(sizeof(bswabe_cph_t));
+
+	element_init_Zr(s, pub->p);
+	element_init_GT(m_e, pub->p);
+	element_init_GT(cph->cs, pub->p);
+	element_init_G1(cph->c,  pub->p);
+	parse_policy_postfix(&cph->p, policy);
+
+	/* compute */
+ 	element_random(m_e);
+ 	element_random(s);
+	element_pow_zn(cph->cs, pub->g_hat_alpha, s);
+	element_mul(cph->cs, cph->cs, m_e);
+
+	element_pow_zn(cph->c, pub->h, s);
+
+	fill_policy(cph->p, pub, s);
+
+	return cph;
 }
 
 void
@@ -824,12 +832,11 @@ dec_flatten( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* p
 }
 
 size_t
-bswabe_dec( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len)
+bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len)
 {
 	int i;
 	
 	/* operations before decryption from: http://hms.isi.jhu.edu/acsc/cpabe/cpabe-0.11.tar.gz  */
-	bswabe_cph_t* cph;
 	size_t a = 0;
 	
 	/* read plaintext len as 32-bit big endian int */
@@ -861,12 +868,24 @@ bswabe_dec( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_
 	char* cph_buf = malloc(cph_buf_len);
 	memcpy(cph_buf, c + a, cph_buf_len);	
 
-	element_t t;
 	element_t m_e;
+	bswabe_cph_t* cph = NULL;
+	bswabe_cph_unserialize(&cph, pub, cph_buf, cph_buf_len);
+	bswabe_dec(pub, prv, cph, m_e);
+
+	m_len = bswabe_aes_128_cbc_decrypt(m, aes_buf, aes_buf_len, m_e);
+
+	free(aes_buf);
+	free(cph_buf);
+
+	return m_len;
+}
+	
+int bswabe_dec( bswabe_pub_t* pub, bswabe_prv_t* prv, bswabe_cph_t* cph, element_t m_e )
+{
+	element_t t;
 	element_init_GT(m_e, pub->p);
 	element_init_GT(t, pub->p);
-
-	bswabe_cph_unserialize(&cph, pub, cph_buf, cph_buf_len);
 
 	check_sat(cph->p, prv);
 	if( !cph->p->satisfiable )
@@ -892,10 +911,5 @@ bswabe_dec( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_
 	element_invert(t, t);
 	element_mul(m_e, m_e, t); /* num_muls++; */
 
-	m_len = bswabe_aes_128_cbc_decrypt(m, aes_buf, aes_buf_len, m_e);
-
-	free(aes_buf);
-	free(cph_buf);
-
-	return m_len;
+	return 1;
 }

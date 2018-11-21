@@ -72,8 +72,9 @@ void bswabe_keygen( bswabe_prv_t** prv,  bswabe_pub_t* pub,
   Returns null if an error occured, in which case a description can be
   retrieved by calling bswabe_error().
 */
-size_t bswabe_enc( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy );
-
+size_t bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy );
+bswabe_cph_t* bswabe_enc( bswabe_pub_t* pub, element_t m_e, char* policy );
+	
 /*
   Decrypt the specified ciphertext using the given private key,
   filling in the provided element m (which need not be initialized)
@@ -82,8 +83,9 @@ size_t bswabe_enc( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* p
   Returns true if decryption succeeded, false if this key does not
   satisfy the policy of the ciphertext (in which case m is unaltered).
 */
-size_t bswabe_dec( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len);
-
+size_t bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len);
+int bswabe_dec( bswabe_pub_t* pub, bswabe_prv_t* prv, bswabe_cph_t* cph, element_t m );
+	
 /*
   Again, exactly what it seems.
 */
