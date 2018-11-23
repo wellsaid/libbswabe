@@ -4,6 +4,7 @@
 #define NDEBUG
 #endif
 #include <assert.h>
+#include <time.h>
 
 #include <mbedtls/sha1.h>
 #include <mbedtls/aes.h>
@@ -374,7 +375,8 @@ bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, cha
 	
 	element_t m_e;
 	bswabe_cph_t* cph = bswabe_enc(pub, m_e, policy);
-	
+
+	clock_t begin = clock();
 	/* rest of the encryption from http://hms.isi.jhu.edu/acsc/cpabe/cpabe-0.11.tar.gz */
 	char* cph_buf = NULL;
 	size_t cph_buf_len = bswabe_cph_serialize(&cph_buf, cph);
@@ -416,6 +418,8 @@ bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, cha
 
 	free(cph_buf);
 	free(aes_buf);
+
+	printf("Overhead time: %f s\n", (float)(clock() - begin) / CLOCKS_PER_SEC);
 	
 	return ct_len;
 }

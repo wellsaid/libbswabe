@@ -8,7 +8,7 @@
 #include "private.h"
 
 void
-bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, int enc, unsigned char* iv )
+bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, unsigned char* iv )
 {
 	int key_len;
 	unsigned char* key_buf;
@@ -17,10 +17,7 @@ bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, int enc, unsigned char* 
 	key_buf = (unsigned char*) malloc(key_len);
 	element_to_bytes(key_buf, k);
 
-	if( enc )
-		mbedtls_aes_setkey_enc(ctx, key_buf + 1, 128);
-	else
-		mbedtls_aes_setkey_dec(ctx, key_buf + 1, 128);
+	mbedtls_aes_setkey_enc(ctx, key_buf + 1, 128);
 	free(key_buf);
 
 	memset(iv, 0, 16);
@@ -33,7 +30,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 
 	mbedtls_aes_context ctx;
 	mbedtls_aes_init(&ctx);
-	bswabe_init_aes(&ctx, k, 1, iv);
+	bswabe_init_aes(&ctx, k, iv);
 
 	/* TODO make less crufty */
 
@@ -68,7 +65,7 @@ bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k )
 
 	mbedtls_aes_context ctx;
 	mbedtls_aes_init(&ctx);
-	bswabe_init_aes(&ctx, k, 1, iv);
+	bswabe_init_aes(&ctx, k, iv);
 
 	unsigned char* pt_final = malloc(ct_len);
 
@@ -277,6 +274,8 @@ unserialize_policy(  bswabe_policy_t** p, bswabe_pub_t* pub, char* b, int* offse
 			unserialize_policy(&child, pub, b, offset);
 			memcpy(&(*p)->children[i], child, sizeof(bswabe_policy_t));
 		}
+
+		free(child);
 	}
 }
 
