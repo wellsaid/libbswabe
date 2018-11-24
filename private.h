@@ -94,7 +94,7 @@ void bswabe_cph_unserialize( bswabe_cph_t** cph, bswabe_pub_t* pub, char* b, siz
 */
 size_t bswabe_aes_128_cbc_encrypt( char** ct, char* pt, size_t pt_len, element_t k );
 size_t bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k );
-void bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, unsigned char* iv );
+void bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, int enc, unsigned char* iv );
 
 /*
   Again, exactly what it seems.
