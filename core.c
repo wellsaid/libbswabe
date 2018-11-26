@@ -26,6 +26,8 @@
 "sign1 1\n" \
 "sign0 1\n"
 
+#define ELAPSED_MILLISEC ((float)(end - begin) / CLOCKS_PER_SEC)*1000
+
 char last_error[256];
 
 char*
@@ -56,16 +58,18 @@ element_from_string( element_t h, char* s )
 {
 	unsigned char* r;
 
-	mbedtls_sha1_context ctx;
-	mbedtls_sha1_init(&ctx);
+	//mbedtls_sha1_context ctx;
+	//mbedtls_sha1_init(&ctx);
 
-	mbedtls_sha1_starts_ret(&ctx);
-	mbedtls_sha1_update_ret(&ctx, (unsigned char*) s, strlen(s));
+	//mbedtls_sha1_starts_ret(&ctx);
+	//mbedtls_sha1_update_ret(&ctx, (unsigned char*) s, strlen(s));
 	r = malloc(20);
-	mbedtls_sha1_finish_ret(&ctx, r);
+	//mbedtls_sha1_finish_ret(&ctx, r);
+	/* NEW */ mbedtls_sha1_ret((unsigned char*) s, strlen(s), r);
 	element_from_hash(h, r, 20);
+	
 
-	mbedtls_sha1_free(&ctx);
+	//mbedtls_sha1_free(&ctx);
 	free(r);
 }
 
@@ -73,9 +77,8 @@ int
 bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 {
 	element_t alpha;
-
+	
 	/* initialize */
- 
 	*pub = malloc(sizeof(bswabe_pub_t));
 	*msk = malloc(sizeof(bswabe_msk_t));
 
@@ -338,27 +341,53 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
 	element_t r;
 	element_t t;
 	element_t h;
+	clock_t begin, end;
 
+	begin = clock();
 	element_init_Zr(r, pub->p);
 	element_init_Zr(t, pub->p);
 	element_init_G2(h, pub->p);
+	end = clock();
+	printf("[fill_policy 0] %f ms\n", ELAPSED_MILLISEC);
 
+
+	begin = clock();
 	rand_poly(&p->q, p->k - 1, e);
-
+	end = clock();
+	printf("[fill_policy 1] %f ms\n", ELAPSED_MILLISEC);
+	
 	if( p->children == NULL )
 	{
+		begin = clock();
 		element_init_G1(p->c,  pub->p);
 		element_init_G2(p->cp, pub->p);
+		end = clock();
+		printf("[fill_policy 2.1] %f ms\n", ELAPSED_MILLISEC);
 
+		begin = clock();
 		element_from_string(h, p->attr);
+		end = clock();
+		printf("[fill_policy 2.2] %f ms\n", ELAPSED_MILLISEC);
+
+		begin = clock();
 		element_pow_zn(p->c,  pub->g, p->q->coef[0]);
+		end = clock();
+		printf("[fill_policy 2.3] %f ms\n", ELAPSED_MILLISEC);
+
+		begin = clock();
 		element_pow_zn(p->cp, h,      p->q->coef[0]);
+		end = clock();
+		printf("[fill_policy 2.4] %f ms\n", ELAPSED_MILLISEC);
 	}
 	else
 		for( i = 0; i < p->children_len; i++ )
 		{
-			element_set_si(r, i + 1);
+			begin = clock();
+			element_set_si(r, i + 1);    
 			eval_poly(t, p->q, r);
+			end = clock();
+			printf("[fill_policy 3.%d] %f ms\n", i, ELAPSED_MILLISEC);
+
 			fill_policy(&p->children[i], pub, t);
 		}
 
@@ -429,26 +458,42 @@ bswabe_enc( bswabe_pub_t* pub, element_t m_e, char* policy )
 {
 	bswabe_cph_t* cph;
  	element_t s;
+	clock_t begin, end;
 
 	/* initialize */
+	begin = clock();
 	cph = malloc(sizeof(bswabe_cph_t));
+	end = clock();
+	printf("[bswabe_enc 0] %f ms\n", ELAPSED_MILLISEC);
 
+	begin = clock();
 	element_init_Zr(s, pub->p);
 	element_init_GT(m_e, pub->p);
 	element_init_GT(cph->cs, pub->p);
 	element_init_G1(cph->c,  pub->p);
 	parse_policy_postfix(&cph->p, policy);
-
+	end = clock();
+	printf("[bswabe_setup 1] %f ms\n", ELAPSED_MILLISEC);
+	
 	/* compute */
+	begin = clock();
  	element_random(m_e);
  	element_random(s);
 	element_pow_zn(cph->cs, pub->g_hat_alpha, s);
 	element_mul(cph->cs, cph->cs, m_e);
+	end = clock();
+	printf("[bswabe_setup 2] %f ms\n", ELAPSED_MILLISEC);
 
+	begin = clock();
 	element_pow_zn(cph->c, pub->h, s);
+	end = clock();
+	printf("[bswabe_setup 3] %f ms\n", ELAPSED_MILLISEC);
 
+	begin = clock();
 	fill_policy(cph->p, pub, s);
-
+	end = clock();
+	printf("[bswabe_setup 4] %f ms\n", ELAPSED_MILLISEC);
+	
 	return cph;
 }
 
