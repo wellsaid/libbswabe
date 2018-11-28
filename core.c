@@ -53,12 +53,11 @@ raise_error(char* fmt, ...)
 void
 element_from_string( element_t h, char* s )
 {
-	unsigned char* r;
+	unsigned char* r = NULL;
 
         r = malloc(20);
         mbedtls_sha1_ret((unsigned char*) s, strlen(s), r);
 	element_from_hash(h, r, 20);
-	
 	free(r);
 }
 
@@ -323,30 +322,76 @@ eval_poly( element_t r, bswabe_polynomial_t* q, element_t x )
 	element_clear(t);
 }
 
+size_t count_policy_attributes(bswabe_policy_t* p)
+{
+	int i;
+	size_t toret = 0;
+
+	if( p->children == NULL ){
+		return 1;
+	}
+	else
+		for( i = 0; i < p->children_len; i++ ){
+			toret += count_policy_attributes(&p->children[i]);
+		}
+
+	return toret;
+}
+
 void
-fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
+pre_fill_policy( element_t** h_vec, size_t* a, bswabe_policy_t* p, bswabe_pub_t* pub )
+{
+	int i;
+	
+	if(*h_vec == NULL)
+	{
+		size_t num = count_policy_attributes(p);
+		*h_vec = malloc(num*sizeof(element_t));
+	}
+
+	if( p->children == NULL )
+	{
+		element_t* h = *h_vec + *a;
+		element_init_G2(*h, pub->p);
+		element_from_string(*h, p->attr);
+		*a += 1;
+	}
+	else
+		for( i = 0; i < p->children_len; i++ )
+			pre_fill_policy(h_vec, a, &p->children[i], pub);
+}
+
+void
+fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_vec )
 {
 	int i;
 	element_t r;
 	element_t t;
-	element_t h;
+	element_t* h = NULL;
 
 	element_init_Zr(r, pub->p);
 	element_init_Zr(t, pub->p);
-	element_init_G2(h, pub->p);
+
+	if(h_vec == NULL)
+	{		
+		h = malloc(sizeof(element_t));
+		element_init_G2(*h, pub->p);
+	}
 
 	rand_poly(&p->q, p->k - 1, e);
-	
+
 	if( p->children == NULL )
 	{
 		element_init_G1(p->c,  pub->p);
 		element_init_G2(p->cp, pub->p);
 
-		element_from_string(h, p->attr);
+		if(h_vec == NULL)
+			element_from_string(*h, p->attr);
+		else
+			h = *(h_vec++);
 
 		element_pow_zn(p->c,  pub->g, p->q->coef[0]);
-
-		element_pow_zn(p->cp, h,      p->q->coef[0]);
+		element_pow_zn(p->cp, *h, p->q->coef[0]);
 	}
 	else
 		for( i = 0; i < p->children_len; i++ )
@@ -354,22 +399,23 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e )
 			element_set_si(r, i + 1);    
 			eval_poly(t, p->q, r);
 
-			fill_policy(&p->children[i], pub, t);
+			fill_policy(&p->children[i], pub, t, h_vec);
 		}
 
 	element_clear(r);
 	element_clear(t);
-	element_clear(h);
+	if(h_vec == NULL)
+	{
+		element_clear(*h);
+		free(h);
+	}
 }
 
 size_t
-bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy )
+bswabe_enc_byte_array( char** ct, bswabe_cph_t* cph, bswabe_pub_t* pub, char*  m, size_t m_len, element_t m_e )
 {
 	int i;
 	uint8_t byte;
-	
-	element_t m_e;
-	bswabe_cph_t* cph = bswabe_enc(pub, m_e, policy);
 
 	/* rest of the encryption from http://hms.isi.jhu.edu/acsc/cpabe/cpabe-0.11.tar.gz */
 	char* cph_buf = NULL;
@@ -412,16 +458,14 @@ bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, cha
 
 	free(cph_buf);
 	free(aes_buf);
-
 	
 	return ct_len;
 }
 	
 bswabe_cph_t*
-bswabe_enc( bswabe_pub_t* pub, element_t m_e, char* policy )
+bswabe_enc( bswabe_pub_t* pub, element_t m_e,  element_t s, char* policy)
 {
 	bswabe_cph_t* cph;
- 	element_t s;
 
 	/* initialize */
 	cph = malloc(sizeof(bswabe_cph_t));
@@ -439,8 +483,6 @@ bswabe_enc( bswabe_pub_t* pub, element_t m_e, char* policy )
 	element_mul(cph->cs, cph->cs, m_e);
 
 	element_pow_zn(cph->c, pub->h, s);
-
-	fill_policy(cph->p, pub, s);
 	
 	return cph;
 }

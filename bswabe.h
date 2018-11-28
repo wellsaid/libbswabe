@@ -6,21 +6,89 @@
 #if defined (__cplusplus)
 extern "C" {
 #endif
-
+	
 /*
   A public key.
 */
 typedef struct bswabe_pub_s bswabe_pub_t;
 
+struct bswabe_pub_s
+{
+	char* pairing_desc;
+	pairing_t p;
+	element_t g;           /* G_1 */
+	element_t h;           /* G_1 */
+	element_t gp;          /* G_2 */
+	element_t g_hat_alpha; /* G_T */
+};
+	
 /*
   A master secret key.
 */
 typedef struct bswabe_msk_s bswabe_msk_t;
 
+struct bswabe_msk_s
+{
+	element_t beta;    /* Z_r */
+	element_t g_alpha; /* G_2 */
+};
+	
 /*
   A private key.
 */
 typedef struct bswabe_prv_s bswabe_prv_t;
+
+typedef struct
+{
+	/* these actually get serialized */
+	char* attr;
+	element_t d;  /* G_2 */
+	element_t dp; /* G_2 */
+
+	/* only used during dec (only by dec_merge) */
+	int used;
+	element_t z;  /* G_1 */
+	element_t zp; /* G_1 */
+}
+bswabe_prv_comp_t;
+
+struct bswabe_prv_s
+{
+	element_t d;   /* G_2 */
+	bswabe_prv_comp_t* comps; /* bswabe_prv_comp_t's */
+	size_t comps_len;
+};
+	
+typedef struct bswabe_policy_t bswabe_policy_t;
+
+typedef struct
+{
+	int deg;
+	/* coefficients from [0] x^0 to [deg] x^deg */
+	element_t* coef; /* G_T (of length deg + 1) */
+}
+bswabe_polynomial_t;
+	
+struct bswabe_policy_t
+{
+	/* serialized */
+	int k;            /* one if leaf, otherwise threshold */
+	char* attr;       /* attribute string if leaf, otherwise null */
+	element_t c;      /* G_1, only for leaves */
+	element_t cp;     /* G_1, only for leaves */
+	bswabe_policy_t* children; /* pointers to bswabe_policy_t's, len == 0 for leaves */
+	size_t children_len;
+
+	/* only used during encryption */
+	bswabe_polynomial_t* q;
+
+	/* only used during decryption */
+	int satisfiable;
+	int min_leaves;
+	int attri;
+	int* satl;
+	size_t satl_len;
+};
 
 /*
   A ciphertext. Note that this library only handles encrypting a
@@ -30,6 +98,13 @@ typedef struct bswabe_prv_s bswabe_prv_t;
 */
 typedef struct bswabe_cph_s bswabe_cph_t;
 
+struct bswabe_cph_s
+{
+	element_t cs; /* G_T */
+	element_t c;  /* G_1 */
+	bswabe_policy_t* p;
+};
+	
 /*
   Generate a public key and corresponding master secret key, and
   assign the *pub and *msk pointers to them. The space used may be
@@ -72,8 +147,10 @@ void bswabe_keygen( bswabe_prv_t** prv,  bswabe_pub_t* pub,
   Returns null if an error occured, in which case a description can be
   retrieved by calling bswabe_error().
 */
-size_t bswabe_enc_byte_array( char** ct, bswabe_pub_t* pub, char*  m, size_t m_len, char* policy );
-bswabe_cph_t* bswabe_enc( bswabe_pub_t* pub, element_t m_e, char* policy );
+bswabe_cph_t* bswabe_enc( bswabe_pub_t* pub, element_t m_e,  element_t s, char* policy);
+size_t bswabe_enc_byte_array( char** ct, bswabe_cph_t* cph, bswabe_pub_t* pub, char*  m, size_t m_len, element_t m_e );
+void pre_fill_policy( element_t** h_vec, size_t* a, bswabe_policy_t* p, bswabe_pub_t* pub );
+void fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_vec );
 	
 /*
   Decrypt the specified ciphertext using the given private key,
