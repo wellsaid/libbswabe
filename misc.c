@@ -32,6 +32,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 	unsigned char iv[16];
 
 	mbedtls_aes_context ctx;
+
 	mbedtls_aes_init(&ctx);
 	bswabe_init_aes(&ctx, k, 1, iv);
 
@@ -48,7 +49,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 	pt_final[3] = (pt_len & 0xff)>>0;
 
 	memcpy(pt_final + 4, pt, pt_len);
-	
+
 	*ct = malloc(pt_final_len);
 	mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT, pt_final_len, iv,
 			      (unsigned char*) pt_final,
@@ -73,7 +74,7 @@ bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k )
 	unsigned char* pt_final = malloc(ct_len);
 
 	if(mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, ct_len, iv,
-				 (unsigned char*) ct, pt_final) == MBEDTLS_ERR_AES_INVALID_INPUT_LENGTH)
+				 (unsigned char*) ct, (unsigned char*) pt_final) == MBEDTLS_ERR_AES_INVALID_INPUT_LENGTH)
 		return 0;
 
 	/* TODO make less crufty */

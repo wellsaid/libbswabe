@@ -388,7 +388,7 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_v
 		if(h_vec == NULL)
 			element_from_string(*h, p->attr);
 		else
-			h = *(h_vec++);
+			h = (*h_vec)++;
 
 		element_pow_zn(p->c,  pub->g, p->q->coef[0]);
 		element_pow_zn(p->cp, *h, p->q->coef[0]);
@@ -871,7 +871,7 @@ dec_flatten( element_t r, bswabe_policy_t* p, bswabe_prv_t* prv, bswabe_pub_t* p
 }
 
 size_t
-bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len)
+bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len )
 {
 	int i;
 	
@@ -879,7 +879,7 @@ bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c
 	size_t a = 0;
 	
 	/* read plaintext len as 32-bit big endian int */
-    	size_t m_len = 0;
+	size_t m_len = 0;
 	for( i = 3; i >= 0; i-- )
 	{
 		m_len |= c[a]<<(i*8);
