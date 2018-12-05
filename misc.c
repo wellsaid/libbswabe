@@ -376,7 +376,7 @@ bswabe_policy_free( bswabe_policy_t* p )
 {
 	int i;
 
-	if( p->attr )
+	if( p->children_len == 0 )
 	{
 		free(p->attr);
 		element_clear(p->c);
@@ -384,15 +384,11 @@ bswabe_policy_free( bswabe_policy_t* p )
 	}
 
 	for( i = 0; i < p->children_len; i++ )
-	{
 		bswabe_policy_free(&p->children[i]);
-	}
 
 	if(p->children_len > 0)
-	{
 		free(p->children);
-		free(p);
-	}
+
 }
 
 void
@@ -401,4 +397,5 @@ bswabe_cph_free( bswabe_cph_t* cph )
 	element_clear(cph->cs);
 	element_clear(cph->c);
 	bswabe_policy_free(cph->p);
+	free(cph->p);
 }
