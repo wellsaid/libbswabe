@@ -34,13 +34,13 @@ dnl  specific library functions
 AC_FUNC_MALLOC
 AC_FUNC_ALLOCA
 AC_FUNC_VPRINTF
-AC_CHECK_LIB(crypto, SHA1,,
- [AC_MSG_ERROR([please install the OpenSSL crypto library, libcrypto.])])
+#AC_CHECK_LIB(crypto, SHA1,,
+# [AC_MSG_ERROR([please install the OpenSSL crypto library, libcrypto.])])
 AC_CHECK_FUNCS([strdup],,
  [AC_MSG_ERROR([could not link to required function strdup])])
 
 dnl Now, we check for specific packages we need.
-AM_PATH_GLIB_2_0([2.0.0])
+#AM_PATH_GLIB_2_0([2.0.0])
 GMP_4_0_CHECK
 PBC_CHECK
 

@@ -62,6 +62,10 @@ particular version with
 
 See ./configure --help for more information.
 ])
+      ],
+      [
+	AC_MSG_RESULT(cross-compiling)
+	AC_MSG_WARN([cannot run test program while cross compiling... assuming ok!])
       ])
   ],
   [
@@ -115,14 +119,14 @@ AC_ARG_WITH(
 You must specify an absolute path for --with-pbc-lib.
 ]) ;;
     esac
-    PBC_LIBS="-L$withval -Wl,-rpath $withval -lpbc"
-  ], [PBC_LIBS="-lpbc"])
+    PBC_LIBS="-L$withval -Wl,-rpath $withval -lpbc -lm"
+  ], [PBC_LIBS="-lpbc -lm"])
 
 BACKUP_CFLAGS=${CFLAGS}
 BACKUP_LIBS=${LIBS}
 
 CFLAGS="${CFLAGS} ${GMP_CFLAGS} ${PBC_CFLAGS}"
-LIBS="${LIBS} ${GMP_LIBS} ${PBC_LIBS}"
+LIBS="${LIBS} ${PBC_LIBS} ${GMP_LIBS}"
 
 AC_TRY_LINK(
   [#include <pbc.h>],
