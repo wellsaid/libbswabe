@@ -6,12 +6,10 @@ includedir = @includedir@
 
 CC = @CC@
 CFLAGS  = @CFLAGS@ \
-	@GLIB_CFLAGS@ \
 	@GMP_CFLAGS@ \
 	@PBC_CFLAGS@ \
 	@DEFS@
 LDFLAGS = @LDFLAGS@ \
-	@GLIB_LIBS@ \
 	@GMP_LIBS@ \
 	@PBC_LIBS@ \
 	@LIBS@
@@ -29,7 +27,7 @@ libbswabe.a: core.o misc.o
 # test: test.o libbswabe.a
 # 	$(CC) -o $@ $(LDFLAGS) $^
 
-%.o: %.c *.h Makefile
+%.o: $(top_srcdir)/%.c $(top_srcdir)/*.h Makefile
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 # installation
@@ -37,7 +35,7 @@ libbswabe.a: core.o misc.o
 dist: AUTHORS COPYING INSTALL NEWS README \
 	aclocal.m4 acinclude.m4 configure configure.ac Makefile.in \
 	install-sh missing mkinstalldirs \
-	core.c misc.c private.h bswabe.h
+	$(top_srcdir)/core.c $(top_srcdir)/misc.c $(top_srcdir)/private.h $(top_srcdir)/bswabe.h
 	rm -rf $(DISTNAME)
 	mkdir $(DISTNAME)
 	cp $^ $(DISTNAME)
