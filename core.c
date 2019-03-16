@@ -93,7 +93,8 @@ bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 	*pub = heapmem_alloc(sizeof(bswabe_pub_t));
 	*msk = heapmem_alloc(sizeof(bswabe_msk_t));
 
-	(*pub)->pairing_desc = strdup(TYPE_A_PARAMS);
+	(*pub)->pairing_desc = heapmem_alloc(strlen(TYPE_A_PARAMS)+1);
+	strcpy((*pub)->pairing_desc, TYPE_A_PARAMS);
 	if( pairing_init_set_buf((*pub)->p, (*pub)->pairing_desc, strlen((*pub)->pairing_desc)) ){
 		return 0;
 	}
@@ -115,9 +116,9 @@ bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 
 	element_pow_zn((*msk)->g_alpha, (*pub)->gp, alpha);
 	element_pow_zn((*pub)->h, (*pub)->g, (*msk)->beta);
-       pairing_apply((*pub)->g_hat_alpha, (*pub)->g, (*msk)->g_alpha, (*pub)->p);
+	pairing_apply((*pub)->g_hat_alpha, (*pub)->g, (*msk)->g_alpha, (*pub)->p);
 
-       return 1;
+	return 1;
 }
 
 void bswabe_keygen( bswabe_prv_t** prv, bswabe_pub_t* pub, bswabe_msk_t* msk, char** attributes, size_t num_attributes)
@@ -154,7 +155,9 @@ void bswabe_keygen( bswabe_prv_t** prv, bswabe_pub_t* pub, bswabe_msk_t* msk, ch
 		element_t h_rp;
 		element_t rp;
 
-		c.attr = strdup(attributes[i]);
+		c.attr = heapmem_alloc(strlen(attributes[i])+1);
+		strcpy(c.attr, attributes[i]);
+
 
 		element_init_G2(c.d,  pub->p);
 		element_init_G1(c.dp, pub->p);
@@ -182,7 +185,12 @@ base_node( bswabe_policy_t** p, int k, char* s )
 {
 	(*p) = heapmem_alloc(sizeof(bswabe_policy_t));
 	(*p)->k = k;
-	(*p)->attr = s? strdup(s) : NULL;
+	if(s){
+		(*p)->attr = heapmem_alloc(strlen(s)+1);
+		strcpy((*p)->attr, s);
+	} else {
+		(*p)->attr = 0;
+	}
 	(*p)->children = NULL;
 	(*p)->children_len = 0;
 	(*p)->q = 0;
@@ -222,7 +230,8 @@ parse_policy_postfix( bswabe_policy_t** root, char* s )
 	stack    = heapmem_alloc((strtok_count(s, " ")+1)*sizeof(bswabe_policy_t));
 	top = stack;
 
-	char* s_tmp = strdup(s);
+	char* s_tmp = heapmem_alloc(strlen(s)+1);
+	strcpy(s_tmp,s);
 
 	tok = strtok(s_tmp, " ");
 	while( tok )
