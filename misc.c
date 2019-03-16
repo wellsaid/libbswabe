@@ -23,7 +23,7 @@ bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, int enc, unsigned char* 
 	unsigned char* key_buf;
 
 	key_len = element_length_in_bytes(k) < 17 ? 17 : element_length_in_bytes(k);
-	key_buf = (unsigned char*) malloc(key_len);
+	key_buf = (unsigned char*) heapmem_alloc(key_len);
 	element_to_bytes(key_buf, k);
 
 #if defined(CONTIKI_TARGET_ZOUL)
@@ -40,7 +40,7 @@ bswabe_init_aes( mbedtls_aes_context* ctx, element_t k, int enc, unsigned char* 
 	else
 		mbedtls_aes_setkey_dec(ctx, key_buf + 1, 128);
 #endif
-	free(key_buf);
+	heapmem_free(key_buf);
 
 	memset(iv, 0, 16);
 }
@@ -63,7 +63,8 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 	/* stuff in real length (big endian) before padding */
 	size_t pt_final_len = 4 + pt_len;
 	pt_final_len += (16 - ((int) pt_final_len % 16));
-	char *pt_final = calloc(pt_final_len, sizeof(char));
+	char *pt_final = heapmem_alloc(pt_final_len*sizeof(char));
+	memset(pt_final, 0, pt_final_len*sizeof(char));
 	
 	pt_final[0] = (pt_len & 0xff000000)>>24;
 	pt_final[1] = (pt_len & 0xff0000)>>16;
@@ -72,7 +73,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 
 	memcpy(pt_final + 4, pt, pt_len);
 
-	*ct = malloc(pt_final_len);
+	*ct = heapmem_alloc(pt_final_len);
 #if defined(CONTIKI_TARGET_ZOUL)
 	uint8_t ret;
 	if( (ret = cbc_crypt_start(1, 0, iv, pt_final, *ct, pt_final_len, NULL)) != CRYPTO_SUCCESS){
@@ -95,7 +96,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 			      (unsigned char*) *ct);
 #endif
 	
-	free(pt_final);
+	heapmem_free(pt_final);
 #if defined(CONTIKI_TARGET_ZOUL)
 	crypto_disable();
 #else
@@ -119,7 +120,7 @@ bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k )
 	init_aes(&ctx, k, 0, iv);
 #endif
 
-	char* pt_final = malloc(ct_len);
+	char* pt_final = heapmem_alloc(ct_len);
 
 #if defined(CONTIKI_TARGET_ZOUL)
 	uint8_t ret;
@@ -153,10 +154,10 @@ bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k )
 	    | ((pt_final[2])<<8)  | ((pt_final[3])<<0);
 	
 	/* truncate any garbage from the padding */
-	*pt = malloc(len);
+	*pt = heapmem_alloc(len);
 	memcpy(*pt, pt_final + 4, len); 
 
-	free(pt_final);
+	heapmem_free(pt_final);
 #if defined(CONTIKI_TARGET_ZOUL)
 	crypto_disable();
 #else
@@ -169,7 +170,7 @@ bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k )
 void
 serialize_uint32( char** b, uint32_t k )
 {
-        *b = malloc(4);
+        *b = heapmem_alloc(4);
 	
 	int i;
 	uint8_t byte;
@@ -200,17 +201,17 @@ serialize_element( char** b, element_t e )
 	uint32_t len;
 
 	len = element_length_in_bytes(e);
-	*b = malloc(4 + len);
+	*b = heapmem_alloc(4 + len);
 
 	char *buf1 = NULL;
 	serialize_uint32(&buf1, len);
 	memcpy(*b, buf1, 4);
-	free(buf1);
+	heapmem_free(buf1);
 
-	unsigned char* buf2 = (unsigned char*) malloc(len);
+	unsigned char* buf2 = (unsigned char*) heapmem_alloc(len);
 	element_to_bytes(buf2, e);
 	memcpy(*b + 4, buf2, len);
-	free(buf2);
+	heapmem_free(buf2);
 	
 	return 4+len;
 }
@@ -222,12 +223,12 @@ unserialize_element( char* b, int* offset, element_t e )
 
 	len = unserialize_uint32(b, offset);
 
-	unsigned char* buf = malloc(len);
+	unsigned char* buf = heapmem_alloc(len);
 	memcpy(buf, b + *offset, len);
 	*offset += len;
 
 	element_from_bytes(e, buf);
-	free(buf);
+	heapmem_free(buf);
 }
 
 size_t
@@ -251,7 +252,7 @@ serialize_policy( char** b, bswabe_policy_t* p )
 	size_t buf6_len[p->children_len];
 	if( p->children == NULL )
 	{
-		buf3 = malloc(strlen(p->attr) + 1);
+		buf3 = heapmem_alloc(strlen(p->attr) + 1);
 		strcpy(buf3, p->attr);
 		buf3_len = strlen(buf3) + 1;
 
@@ -279,29 +280,29 @@ serialize_policy( char** b, bswabe_policy_t* p )
 			b_len += buf6_len[i];
 		}
 	}
-	*b = malloc(b_len);
+	*b = heapmem_alloc(b_len);
 
 	size_t a = 0;
 	memcpy(*b, buf1, 4);
 	a += 4;
-	free(buf1);
+	heapmem_free(buf1);
 
 	memcpy(*b + a, buf2, 4);
 	a += 4;
-	free(buf2);
+	heapmem_free(buf2);
 
 	if( p->children_len == 0 )
 	{
 		memcpy(*b + a, buf3, buf3_len);
 		a += buf3_len;
-		free(buf3);
+		heapmem_free(buf3);
 
 		memcpy(*b + a, buf4, buf4_len);
 		a += buf4_len;
-		free(buf4);
+		heapmem_free(buf4);
 
 		memcpy(*b + a, buf5, buf5_len);
-		free(buf5);
+		heapmem_free(buf5);
 	}
 	else
 	{
@@ -309,7 +310,7 @@ serialize_policy( char** b, bswabe_policy_t* p )
 		{
 			memcpy(*b + a, buf6[i], buf6_len[i]);
 			a += buf6_len[i];
-			free(buf6[i]);			
+			heapmem_free(buf6[i]);			
 		}
 	}
 
@@ -321,7 +322,7 @@ unserialize_policy(  bswabe_policy_t** p, bswabe_pub_t* pub, char* b, int* offse
 {
 	int i;
 
-	(*p) = malloc(sizeof(bswabe_policy_t));
+	(*p) = heapmem_alloc(sizeof(bswabe_policy_t));
 
 	(*p)->k = unserialize_uint32(b, offset);
 	(*p)->attr = 0;
@@ -331,7 +332,7 @@ unserialize_policy(  bswabe_policy_t** p, bswabe_pub_t* pub, char* b, int* offse
 	{
 		(*p)->children = NULL;
 		
-		(*p)->attr = malloc(strlen(b + *offset) + 1);
+		(*p)->attr = heapmem_alloc(strlen(b + *offset) + 1);
 		strcpy((*p)->attr, b + *offset);
 		*offset += strlen(b + *offset) + 1;
 		
@@ -343,7 +344,7 @@ unserialize_policy(  bswabe_policy_t** p, bswabe_pub_t* pub, char* b, int* offse
 	}
 	else
 	{
-		(*p)->children = malloc((*p)->children_len*sizeof(bswabe_policy_t));
+		(*p)->children = heapmem_alloc((*p)->children_len*sizeof(bswabe_policy_t));
 		bswabe_policy_t* child = NULL;
 		for( i = 0; i < (*p)->children_len; i++ )
 		{
@@ -351,7 +352,7 @@ unserialize_policy(  bswabe_policy_t** p, bswabe_pub_t* pub, char* b, int* offse
 			memcpy(&(*p)->children[i], child, sizeof(bswabe_policy_t));
 		}
 
-		free(child);
+		heapmem_free(child);
 	}
 }
 
@@ -368,19 +369,19 @@ bswabe_cph_serialize( char** b, bswabe_cph_t* cph )
 	size_t buf3_len = serialize_policy(&buf3, cph->p);
 	
 	size_t b_len = buf1_len + buf2_len + buf3_len; 
-	*b = malloc(b_len);
+	*b = heapmem_alloc(b_len);
 
 	size_t a = 0;
 	memcpy(*b, buf1, buf1_len);
 	a+= buf1_len;
-	free(buf1);
+	heapmem_free(buf1);
 
 	memcpy(*b + a, buf2, buf2_len);
 	a+= buf2_len;
-	free(buf2);
+	heapmem_free(buf2);
 
 	memcpy(*b + a, buf3, buf3_len);
-	free(buf3);
+	heapmem_free(buf3);
 
 	return b_len;
 }
@@ -390,7 +391,7 @@ bswabe_cph_unserialize( bswabe_cph_t** cph, bswabe_pub_t* pub, char* b, size_t b
 {
 	int offset;
 
-	*cph = malloc(sizeof(bswabe_cph_t));
+	*cph = heapmem_alloc(sizeof(bswabe_cph_t));
 	offset = 0;
 
 	element_init_GT((*cph)->cs, pub->p);
@@ -409,8 +410,8 @@ bswabe_pub_free( bswabe_pub_t* pub )
 	element_clear(pub->gp);
 	element_clear(pub->g_hat_alpha);
 	pairing_clear(pub->p);
-	free(pub->pairing_desc);
-	free(pub);
+	heapmem_free(pub->pairing_desc);
+	heapmem_free(pub);
 }
 
 void
@@ -418,7 +419,7 @@ bswabe_msk_free( bswabe_msk_t* msk )
 {
 	element_clear(msk->beta);
 	element_clear(msk->g_alpha);
-	free(msk);
+	heapmem_free(msk);
 }
 
 void
@@ -433,14 +434,14 @@ bswabe_prv_free( bswabe_prv_t* prv )
 		bswabe_prv_comp_t* c;
 
 		c = &prv->comps[i];
-		free(c->attr);
+		heapmem_free(c->attr);
 		element_clear(c->d);
 		element_clear(c->dp);
 	}
 
-	free(prv->comps);
+	heapmem_free(prv->comps);
 
-	free(prv);
+	heapmem_free(prv);
 }
 
 void
@@ -450,7 +451,7 @@ bswabe_policy_free( bswabe_policy_t* p )
 
 	if( p->children_len == 0 )
 	{
-		free(p->attr);
+		heapmem_free(p->attr);
 		element_clear(p->c);
 		element_clear(p->cp);
 	}
@@ -459,7 +460,7 @@ bswabe_policy_free( bswabe_policy_t* p )
 		bswabe_policy_free(&p->children[i]);
 
 	if(p->children_len > 0)
-		free(p->children);
+		heapmem_free(p->children);
 
 }
 
@@ -469,5 +470,5 @@ bswabe_cph_free( bswabe_cph_t* cph )
 	element_clear(cph->cs);
 	element_clear(cph->c);
 	bswabe_policy_free(cph->p);
-	free(cph->p);
+	heapmem_free(cph->p);
 }

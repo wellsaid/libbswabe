@@ -90,8 +90,8 @@ bswabe_setup( bswabe_pub_t** pub, bswabe_msk_t** msk )
 	element_t alpha;
 	
 	/* initialize */
-	*pub = malloc(sizeof(bswabe_pub_t));
-	*msk = malloc(sizeof(bswabe_msk_t));
+	*pub = heapmem_alloc(sizeof(bswabe_pub_t));
+	*msk = heapmem_alloc(sizeof(bswabe_msk_t));
 
 	(*pub)->pairing_desc = strdup(TYPE_A_PARAMS);
 	if( pairing_init_set_buf((*pub)->p, (*pub)->pairing_desc, strlen((*pub)->pairing_desc)) ){
@@ -130,14 +130,14 @@ void bswabe_keygen( bswabe_prv_t** prv, bswabe_pub_t* pub, bswabe_msk_t* msk, ch
 
 	/* initialize */
 
-	(*prv) = malloc(sizeof(bswabe_prv_t));
+	(*prv) = heapmem_alloc(sizeof(bswabe_prv_t));
 
 	element_init_G2((*prv)->d, pub->p);
 	element_init_G2(g_r, pub->p);
 	element_init_Zr(r, pub->p);
 	element_init_Zr(beta_inv, pub->p);
 
-	(*prv)->comps = malloc(num_attributes*sizeof(bswabe_prv_comp_t));
+	(*prv)->comps = heapmem_alloc(num_attributes*sizeof(bswabe_prv_comp_t));
 	(*prv)->comps_len = 0;
 	
 	/* compute */
@@ -180,7 +180,7 @@ void bswabe_keygen( bswabe_prv_t** prv, bswabe_pub_t* pub, bswabe_msk_t* msk, ch
 void
 base_node( bswabe_policy_t** p, int k, char* s )
 {
-	(*p) = malloc(sizeof(bswabe_policy_t));
+	(*p) = heapmem_alloc(sizeof(bswabe_policy_t));
 	(*p)->k = k;
 	(*p)->attr = s? strdup(s) : NULL;
 	(*p)->children = NULL;
@@ -219,7 +219,7 @@ parse_policy_postfix( bswabe_policy_t** root, char* s )
 	size_t stack_len = 0;
 	bswabe_policy_t* top;
 	
-	stack    = malloc((strtok_count(s, " ")+1)*sizeof(bswabe_policy_t));
+	stack    = heapmem_alloc((strtok_count(s, " ")+1)*sizeof(bswabe_policy_t));
 	top = stack;
 
 	char* s_tmp = strdup(s);
@@ -263,7 +263,7 @@ parse_policy_postfix( bswabe_policy_t** root, char* s )
 			
 			/* pop n things and fill in children */
 			base_node(&node, k, 0);
-			node->children = malloc(n*sizeof(bswabe_policy_t));
+			node->children = heapmem_alloc(n*sizeof(bswabe_policy_t));
 			node->children_len = 0;
 			for( i = n - 1; i >= 0; i-- )
 			{
@@ -277,7 +277,7 @@ parse_policy_postfix( bswabe_policy_t** root, char* s )
 			stack_len++;
 		}
 
-		free(node);
+		heapmem_free(node);
 		tok = strtok(NULL, " ");
 	}
 
@@ -292,11 +292,11 @@ parse_policy_postfix( bswabe_policy_t** root, char* s )
 		return 0;
 	}
 
-	*root = malloc(sizeof(bswabe_policy_t));
+	*root = heapmem_alloc(sizeof(bswabe_policy_t));
 	memcpy(*root, --top, sizeof(bswabe_policy_t));
 
-	free(stack);
-	free(s_tmp);
+	heapmem_free(stack);
+	heapmem_free(s_tmp);
 	
 	return 1;
 }
@@ -306,9 +306,9 @@ rand_poly( bswabe_polynomial_t** q, int deg, element_t zero_val )
 {
 	int i;
 
-	(*q) = malloc(sizeof(bswabe_polynomial_t));
+	(*q) = heapmem_alloc(sizeof(bswabe_polynomial_t));
 	(*q)->deg = deg;
-	(*q)->coef = malloc((deg + 1)*sizeof(element_t));
+	(*q)->coef = heapmem_alloc((deg + 1)*sizeof(element_t));
 
 	for( i = 0; i < (*q)->deg + 1; i++ )
 		element_init_same_as((*q)->coef[i], zero_val);
@@ -369,7 +369,7 @@ pre_fill_policy( element_t** h_vec, size_t* a, bswabe_policy_t* p, bswabe_pub_t*
 	if(*h_vec == NULL)
 	{
 		size_t num = count_policy_attributes(p);
-		*h_vec = malloc(num*sizeof(element_t));
+		*h_vec = heapmem_alloc(num*sizeof(element_t));
 	}
 
 	if( p->children == NULL )
@@ -397,7 +397,7 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_v
 
 	if(h_vec == NULL)
 	{		
-		h = malloc(sizeof(element_t));
+		h = heapmem_alloc(sizeof(element_t));
 		element_init_G2(*h, pub->p);
 	}
 
@@ -430,7 +430,7 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_v
 	if(h_vec == NULL)
 	{
 		element_clear(*h);
-		free(h);
+		heapmem_free(h);
 	}
 }
 
@@ -450,7 +450,7 @@ bswabe_enc_byte_array( char** ct, bswabe_cph_t* cph, bswabe_pub_t* pub, char*  m
 	element_clear(m_e);
 	
 	size_t ct_len = 12 + aes_buf_len + cph_buf_len;
-	*ct = malloc(ct_len);
+	*ct = heapmem_alloc(ct_len);
 
 	size_t a = 0;
 
@@ -479,8 +479,8 @@ bswabe_enc_byte_array( char** ct, bswabe_cph_t* cph, bswabe_pub_t* pub, char*  m
 	}
 	memcpy(*ct + a, cph_buf, cph_buf_len);
 
-	free(cph_buf);
-	free(aes_buf);
+	heapmem_free(cph_buf);
+	heapmem_free(aes_buf);
 	
 	return ct_len;
 }
@@ -491,7 +491,7 @@ bswabe_enc( bswabe_pub_t* pub, element_t m_e,  element_t s, char* policy)
 	bswabe_cph_t* cph;
 
 	/* initialize */
-	cph = malloc(sizeof(bswabe_cph_t));
+	cph = heapmem_alloc(sizeof(bswabe_cph_t));
 
 	element_init_Zr(s, pub->p);
 	element_init_GT(m_e, pub->p);
@@ -560,7 +560,7 @@ pick_sat_naive( bswabe_policy_t* p, bswabe_prv_t* prv )
 		}
 	
 	l = 0;
-	p->satl = malloc(p->satl_len*sizeof(int));
+	p->satl = heapmem_alloc(p->satl_len*sizeof(int));
 	p->satl_len = 0;
 	for( i = 0; i < p->children_len && l < p->k; i++ )
 		if( p->children[i].satisfiable )
@@ -603,7 +603,7 @@ pick_sat_min_leaves( bswabe_policy_t* p, bswabe_prv_t* prv )
 			if( p->children[i].satisfiable )
 				pick_sat_min_leaves(&p->children[i], prv);
 
-		c = malloc(sizeof(int)*p->children_len);
+		c = heapmem_alloc(sizeof(int)*p->children_len);
 		for( i = 0; i < p->children_len; i++ )
 			c[i] = i;
 
@@ -619,7 +619,7 @@ pick_sat_min_leaves( bswabe_policy_t* p, bswabe_prv_t* prv )
 				p->satl_len ++;
 			}
 		
-		p->satl = malloc(p->satl_len*sizeof(int));
+		p->satl = heapmem_alloc(p->satl_len*sizeof(int));
 		p->satl_len = 0;
 		p->min_leaves = 0;
 		l = 0;
@@ -634,7 +634,7 @@ pick_sat_min_leaves( bswabe_policy_t* p, bswabe_prv_t* prv )
 			}
 		assert(l == p->k);
 
-		free(c);
+		heapmem_free(c);
 	}
 }
 
@@ -916,7 +916,7 @@ bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c
 		aes_buf_len |= c[a]<<(i*8);
 		a++;
 	}
-	char *aes_buf = malloc(aes_buf_len);
+	char *aes_buf = heapmem_alloc(aes_buf_len);
 	memcpy(aes_buf, c + a, aes_buf_len);
 	a += aes_buf_len;
     
@@ -927,7 +927,7 @@ bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c
 		cph_buf_len |= c[a]<<(i*8);
 		a++;
 	}
-	char* cph_buf = malloc(cph_buf_len);
+	char* cph_buf = heapmem_alloc(cph_buf_len);
 	memcpy(cph_buf, c + a, cph_buf_len);	
 
 	element_t m_e;
@@ -937,8 +937,8 @@ bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c
 
 	m_len = bswabe_aes_128_cbc_decrypt(m, aes_buf, aes_buf_len, m_e);
 
-	free(aes_buf);
-	free(cph_buf);
+	heapmem_free(aes_buf);
+	heapmem_free(cph_buf);
 
 	return m_len;
 }
