@@ -31,7 +31,7 @@ AC_CHECK_HEADERS([stdint.h stdlib.h string.h],,
  [AC_MSG_ERROR([could not find all required headers stdint.h, stdlib.h, string.h])])
 
 dnl  specific library functions
-AC_FUNC_MALLOC
+#AC_FUNC_MALLOC
 AC_FUNC_ALLOCA
 AC_FUNC_VPRINTF
 #AC_CHECK_LIB(crypto, SHA1,,
