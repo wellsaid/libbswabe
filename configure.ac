@@ -6,20 +6,20 @@ AC_CONFIG_SRCDIR([bswabe.h])
 dnl First, standard system stuff.
 
 dnl  language and compiler support
-AC_MSG_CHECKING(whether to enable debugging)
-debug_default="no"
-AC_ARG_ENABLE(debug, [  --enable-debug=[no/yes]  turn on debugging
-                          [default=$debug_default]],, enable_debug=$debug_default)
-if test "x$enable_debug" = "xyes"; then
-  CFLAGS="-g -Wall"
-  LDFLAGS="-g -Wall"
-  AC_DEFINE(BSWABE_DEBUG)
-  AC_MSG_RESULT(yes)
-else
-  CFLAGS="-O3 -Wall"
-  LDFLAGS="-O3 -Wall"
-  AC_MSG_RESULT(no)
-fi
+#AC_MSG_CHECKING(whether to enable debugging)
+#debug_default="no"
+#AC_ARG_ENABLE(debug, [  --enable-debug=[no/yes]  turn on debugging
+#                          [default=$debug_default]],, enable_debug=$debug_default)
+#if test "x$enable_debug" = "xyes"; then
+#  CFLAGS="-g -Wall"
+#  LDFLAGS="-g -Wall"
+#  AC_DEFINE(BSWABE_DEBUG)
+#  AC_MSG_RESULT(yes)
+#else
+#  CFLAGS="-O3 -Wall"
+#  LDFLAGS="-O3 -Wall"
+#  AC_MSG_RESULT(no)
+#fi
 AC_PROG_CC
 AC_LANG(C)
 AC_C_CONST
