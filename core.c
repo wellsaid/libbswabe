@@ -5,8 +5,12 @@
 #endif
 #include <assert.h>
 
+#if defined(CONTIKI_TARGET_ZOUL)
+/* TODO: required for sha1 ? */
+#else
 #include <mbedtls/sha1.h>
-#include <mbedtls/aes.h>
+#endif
+
 #include <pbc.h>
 
 #include "bswabe.h"
@@ -14,11 +18,8 @@
 
 #define TYPE_A_PARAMS \
 "type a\n" \
-"q 87807107996633125224377819847540498158068831994142082" \
-"1102865339926647563088022295707862517942266222142315585" \
-"8769582317459277713367317481324925129998224791\n" \
-"h 12016012264891146079388821366740534204802954401251311" \
-"822919615131047207289359704531102844802183906537786776\n" \
+"q 25592495515765067051642300423336670621430538560550086238294375266242321140927190193065045904197241858828084036025639\n" \
+"h 35022192055157566125252273151275491786431099978820680852024212634920\n" \
 "r 730750818665451621361119245571504901405976559617\n" \
 "exp2 159\n" \
 "exp1 107\n" \
@@ -56,7 +57,7 @@ element_from_string( element_t h, char* s )
 	unsigned char* r = NULL;
 
         r = malloc(20);
-        mbedtls_sha1_ret((unsigned char*) s, strlen(s), r);
+        mbedtls_sha1_ret((unsigned char*) s, strlen(s), r); /* TODO: substitute with driver for zolertia */
 	element_from_hash(h, r, 20);
 	free(r);
 }
