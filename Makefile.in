@@ -42,11 +42,11 @@ dist: AUTHORS COPYING INSTALL NEWS README \
 	tar zc $(DISTNAME) > $(DISTNAME).tar.gz
 	rm -rf $(DISTNAME)
 
-install: libbswabe.a bswabe.h
+install: libbswabe.a $(top_srcdir)/bswabe.h
 	$(top_srcdir)/mkinstalldirs -m 755 $(DESTDIR)$(libdir)
 	$(top_srcdir)/mkinstalldirs -m 755 $(DESTDIR)$(includedir)
 	$(top_srcdir)/install-sh -m 755 libbswabe.a $(DESTDIR)$(libdir)
-	$(top_srcdir)/install-sh -m 644 bswabe.h $(DESTDIR)$(includedir)
+	$(top_srcdir)/install-sh -m 644 $(top_srcdir)/bswabe.h $(DESTDIR)$(includedir)
 
 uninstall:
 	/bin/rm -f $(DESTDIR)$(libdir)/libbswabe.a
@@ -54,7 +54,7 @@ uninstall:
 
 # development and meta stuff
 
-TAGS: *.c *.h
+TAGS: $(top_srcdir)/*.c $(top_srcdir)/*.h
 	@(etags $^ || true) 2> /dev/null
 
 Makefile: Makefile.in config.status
