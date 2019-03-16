@@ -63,7 +63,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 	/* stuff in real length (big endian) before padding */
 	size_t pt_final_len = 4 + pt_len;
 	pt_final_len += (16 - ((int) pt_final_len % 16));
-	unsigned char *pt_final = calloc(pt_final_len, sizeof(char));
+	char *pt_final = calloc(pt_final_len, sizeof(char));
 	
 	pt_final[0] = (pt_len & 0xff000000)>>24;
 	pt_final[1] = (pt_len & 0xff0000)>>16;

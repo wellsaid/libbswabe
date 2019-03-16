@@ -6,7 +6,7 @@
 #include <assert.h>
 
 #if defined(CONTIKI_TARGET_ZOUL)
-/* TODO: required for sha1 ? */
+#include <dev/sha256.h>
 #else
 #include <mbedtls/sha1.h>
 #endif
@@ -54,12 +54,34 @@ raise_error(char* fmt, ...)
 void
 element_from_string( element_t h, char* s )
 {
-	unsigned char* r = NULL;
+#if defined(CONTIKI_TARGET_ZOUL)
+    uint8_t ret;
+    crypto_init();
 
-        r = malloc(20);
-        mbedtls_sha1_ret((unsigned char*) s, strlen(s), r); /* TODO: substitute with driver for zolertia */
-	element_from_hash(h, r, 20);
-	free(r);
+    sha256_state_t state;
+    if( (ret = sha256_init(&state)) != CRYPTO_SUCCESS ){
+    	printf("ERROR: initializing sha256 structure (error: %u)", ret);
+    	exit(1);
+    }
+
+    if( (ret = sha256_process(&state, s, strlen(s))) != CRYPTO_SUCCESS){
+    	printf("ERROR: performing sha256 operation (error: %u)", ret);
+    	exit(1);
+    }
+
+    unsigned char r[32];
+    if( (ret = sha256_done(&state, &r[0])) != CRYPTO_SUCCESS){
+    	printf("ERROR: getting result of sha256 operation (error: %u)", ret);
+    	exit(1);
+    }
+
+    crypto_disable();
+    element_from_hash(h, r, 32);
+#else
+    unsigned char r[20];
+    mbedtls_sha1_ret((unsigned char*) s, strlen(s), r);
+    element_from_hash(h, r, 20);
+#endif
 }
 
 int
