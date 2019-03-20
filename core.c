@@ -392,7 +392,7 @@ pre_fill_policy( element_t** h_vec, size_t* a, bswabe_policy_t* p, bswabe_pub_t*
 }
 
 void
-fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_vec )
+fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t* h_vec )
 {
 	int i;
 	element_t r;
@@ -418,7 +418,7 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_v
 		if(h_vec == NULL)
 			element_from_string(*h, p->attr);
 		else
-			h = (*h_vec)++;
+			h = h_vec;
 
 		element_pow_zn(p->c,  pub->g, p->q->coef[0]);
 		element_pow_zn(p->cp, *h, p->q->coef[0]);
@@ -429,7 +429,7 @@ fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_v
 			element_set_si(r, i + 1);    
 			eval_poly(t, p->q, r);
 
-			fill_policy(&p->children[i], pub, t, h_vec);
+			fill_policy(&p->children[i], pub, t, h_vec + i);
 		}
 
 	element_clear(r);

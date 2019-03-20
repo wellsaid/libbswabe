@@ -150,7 +150,7 @@ void bswabe_keygen( bswabe_prv_t** prv,  bswabe_pub_t* pub,
 bswabe_cph_t* bswabe_enc( bswabe_pub_t* pub, element_t m_e,  element_t s, char* policy);
 size_t bswabe_enc_byte_array( char** ct, bswabe_cph_t* cph, bswabe_pub_t* pub, char*  m, size_t m_len, element_t m_e );
 void pre_fill_policy( element_t** h_vec, size_t* a, bswabe_policy_t* p, bswabe_pub_t* pub );
-void fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t** h_vec );
+void fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t* h_vec );
 	
 /*
   Decrypt the specified ciphertext using the given private key,
