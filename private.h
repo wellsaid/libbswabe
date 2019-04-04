@@ -2,6 +2,10 @@
 	Include pbc.h, mbedtls/aes.h and bswabe.h before including this file.
 */
 
+#if defined(CONTIKI_TARGET_NATIVE)
+#include <mbedtls/aes.h>
+#endif
+
 /*
   Exactly what it seems.
 */

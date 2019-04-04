@@ -55,7 +55,7 @@ bswabe_aes_128_cbc_encrypt( char **ct, char* pt, size_t pt_len, element_t k )
 #else
 	mbedtls_aes_context ctx;
 	mbedtls_aes_init(&ctx);
-	init_aes(&ctx, k, 1, iv);
+	bswabe_init_aes(&ctx, k, 1, iv);
 #endif
 
 	/* TODO make less crufty */
@@ -116,7 +116,7 @@ bswabe_aes_128_cbc_decrypt( char** pt, char* ct, size_t ct_len, element_t k )
 #else
 	mbedtls_aes_context ctx;
 	mbedtls_aes_init(&ctx);
-	init_aes(&ctx, k, 0, iv);
+	bswabe_init_aes(&ctx, k, 0, iv);
 #endif
 
 	char* pt_final = malloc(ct_len);
