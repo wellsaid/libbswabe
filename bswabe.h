@@ -160,7 +160,7 @@ void fill_policy( bswabe_policy_t* p, bswabe_pub_t* pub, element_t e, element_t*
   Returns true if decryption succeeded, false if this key does not
   satisfy the policy of the ciphertext (in which case m is unaltered).
 */
-size_t bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len);
+size_t bswabe_dec_byte_array( char **m, bswabe_pub_t* pub, bswabe_prv_t* prv,  char * c, size_t c_len, bswabe_cph_t* cph1, element_t m_e1 );
 int bswabe_dec( bswabe_pub_t* pub, bswabe_prv_t* prv, bswabe_cph_t* cph, element_t m );
 	
 /*
